@@ -506,11 +506,17 @@ class SetupModal extends Modal {
 
         const root = new Setting(contentEl)
             .setName("Site root page")
-            .setDesc("Its subpages become notes. Click Find pages to choose, or type a path. Empty means the whole site.");
+            .setDesc("Its subpages become notes. Pick one with Find pages or type its path; leave empty for the whole site.");
         root.addText((text) => text.setPlaceholder("Board_Games").setValue(this._rootPath).onChange((value) => {
             this._setRoot(value.trim());
         }));
         root.addButton((button) => button.setButtonText("Find pages").onClick(() => this._findPages(root)));
+
+        // three controls don't fit beside the description; put them on their own row
+        root.settingEl.style.flexWrap = "wrap";
+        root.controlEl.style.flex = "1 1 100%";
+        root.controlEl.style.justifyContent = "flex-start";
+        root.controlEl.style.marginTop = "var(--size-4-2)";
 
         new Setting(contentEl)
             .setName("Vault folder")
