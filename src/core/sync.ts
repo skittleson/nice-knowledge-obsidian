@@ -147,7 +147,7 @@ export class SyncEngine {
                 throw new Error("No vault folder is set, which would publish every note in this vault. Choose a vault folder, or turn on \"Sync the whole vault\".");
             }
             if(!(await this._client.markdownEnabled())) {
-                throw new Error("Markdown is not enabled on this site. Turn on the site/markdown-contents-enabled config key.");
+                throw new Error("Markdown is not enabled on this site. Ask your NiCE Knowledge contact to enable markdown.");
             }
             const remote = await this._client.tree(this._settings.rootPath);
             const root = remote[0];

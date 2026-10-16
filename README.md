@@ -14,9 +14,8 @@ your changes back and pulls everyone else's.
 
 You need three things. The first one usually takes a request.
 
-1. **Markdown support switched on for your site.** The plugin relies on the `site/markdown-contents-enabled`
-   config key. It's off by default, and site admins can't turn it on themselves, so **ask your NiCE
-   Knowledge contact to enable it** for the site you want to use.
+1. **Markdown enabled on your site.** It's off by default, and site admins can't turn it on themselves,
+   so **ask your NiCE Knowledge contact to enable markdown** for the site you want to use.
 2. **An API token for your own user.** In the site's **Dashboard → Integrations → API token management**,
    generate a **Server** token, tick **Generate long-term JWT (OAuth bearer token)**, choose your user,
    then **Copy JWT**. It's shown only once. Sync runs with that user's permissions. You may need a site

@@ -218,7 +218,7 @@ export default class ExpertSyncPlugin extends Plugin {
             }
             const markdown = await client.markdownEnabled();
             const tree = await client.tree(this.settings.rootPath.trim().replace(/ /g, "_"));
-            new Notice(`NiCE Knowledge Sync: signed in as ${user.name}. Markdown ${markdown ? "enabled" : "NOT enabled (turn on site/markdown-contents-enabled)"}. `
+            new Notice(`NiCE Knowledge Sync: signed in as ${user.name}. Markdown ${markdown ? "enabled" : "NOT enabled (ask your NiCE Knowledge contact to enable it)"}. `
                 + `Root "${tree[0].title}" has ${tree.length - 1} pages.`, 10_000);
         } catch(error) {
             new Notice(`NiCE Knowledge Sync: connection failed: ${error instanceof Error ? error.message : error}`, 10_000);
@@ -274,7 +274,7 @@ class ExpertSyncSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Site URL")
-            .setDesc("Your NiCE Knowledge site, for example https://your-site.example.com. The site needs the site/markdown-contents-enabled config key.")
+            .setDesc("Your NiCE Knowledge site, for example https://your-site.example.com. The site needs markdown enabled.")
             .addText((text) => text.setPlaceholder("https://your-site.example.com").setValue(settings.siteUrl).onChange(async (value) => {
                 settings.siteUrl = value.trim();
                 await this._plugin.saveSettings();
@@ -485,7 +485,7 @@ class SetupModal extends Modal {
     onOpen(): void {
         this.setTitle("Connect this vault to a NiCE Knowledge site");
         const { contentEl } = this;
-        contentEl.createEl("p", { text: "Notes in this vault will be synced with pages on the site: pages as markdown, attachments as files. The site needs the site/markdown-contents-enabled config key." });
+        contentEl.createEl("p", { text: "Notes in this vault will be synced with pages on the site: pages as markdown, attachments as files. The site needs markdown enabled." });
 
         new Setting(contentEl).setName("Site URL").addText((text) => text
             .setPlaceholder("https://your-site.example.com")
@@ -612,7 +612,7 @@ class SetupModal extends Modal {
                 return;
             }
             if(!(await client.markdownEnabled())) {
-                this._say("Markdown is not enabled on this site. Ask an admin to turn on site/markdown-contents-enabled.", true);
+                this._say("Markdown is not enabled on this site. Ask your NiCE Knowledge contact to enable markdown.", true);
                 return;
             }
             const tree = await client.tree(this._rootPath.replace(/ /g, "_"));
