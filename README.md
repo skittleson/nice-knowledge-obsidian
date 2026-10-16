@@ -1,33 +1,44 @@
-# nice-knowledge-obsidian
+# NiCE Knowledge Sync for Obsidian — an experiment
 
-**Expert Sync for Obsidian (experimental)**
+Edit your NiCE Knowledge pages as notes in Obsidian. Each page under a root page you choose becomes a
+markdown note, its attachments become files next to it, and its tags become frontmatter. Sync sends
+your changes back and pulls everyone else's.
 
-Use a CXone Expert site as the backing store for an Obsidian vault. Each note is an
-Expert page, attachments are page files, and frontmatter maps to page tags and article type.
+> [!WARNING]
+> **This is an experiment, not a supported product.** Use it with a test site, back up your vault, and
+> expect rough edges. It writes to your site, and it never deletes anything there without asking you first.
 
-Status: an experiment, desktop only. Tested against a CXone Expert test site with Obsidian 1.14.4.
+![A vault synced from a NiCE Knowledge site](docs/images/vault.png)
 
-## Requirements
+## Before you start
 
-- An Expert site with the **`site/markdown-contents-enabled`** config key turned on. The plugin
-  sends `text/markdown` to the page content API and reads pages back with `format=markdown`.
-- A JWT for your own user (sync runs with your permissions).
-- Obsidian 1.11.4 or later (the token is kept in Obsidian's secret storage).
+You need three things. The first one usually takes a request.
 
-## Create a vault for a site
+1. **Markdown support switched on for your site.** The plugin relies on the `site/markdown-contents-enabled`
+   config key. It's off by default, and site admins can't turn it on themselves, so **ask your NiCE
+   Knowledge contact to enable it** for the site you want to use.
+2. **An API token for your own user.** In the site's **Dashboard → Integrations → API token management**,
+   generate a **Server** token, tick **Generate long-term JWT (OAuth bearer token)**, choose your user,
+   then **Copy JWT**. It's shown only once. Sync runs with that user's permissions. You may need a site
+   admin to create it.
+3. **Obsidian 1.11.4 or later on desktop.** The plugin hasn't been tried on mobile.
+
+## Quick start
+
+There’s no release yet, so you need git and Node.js 22.18 or later.
 
 ```sh
-npm install
-node scripts/create-vault.mjs --vault ~/Vaults/BoardGames --site https://your-site.example.com --root Board_Games --open
+git clone https://github.com/skittleson/nice-knowledge-obsidian.git
+cd nice-knowledge-obsidian && npm install
+node scripts/create-vault.mjs --vault ~/Vaults/MySite --site https://your-site.example.com --root Some_Page --open
 ```
 
-This makes a new vault with the plugin installed, enabled and pointed at the site (`--root` is the
-page whose subpages become notes; `--folder` sets the vault folder, which defaults to the root's name).
-When Obsidian opens it, the **Connect this vault to an Expert site** screen appears with the site
-and root filled in. Paste your API token, click **Connect and sync**, and the pages and attachments
-come down. The token goes into Obsidian's secret storage, not into the vault.
+This makes a new vault with the plugin installed and pointed at your site. When it opens, the
+**Connect** screen asks for your token. Paste it, choose **Connect and sync**, and the pages arrive.
+After that, use the ribbon's sync icon or the **Sync now** command whenever you want to sync.
 
-## Add it to an existing vault
+<details>
+<summary>Add it to a vault you already have</summary>
 
 ```sh
 npm run build
@@ -35,114 +46,153 @@ mkdir -p "<vault>/.obsidian/plugins/expert-sync"
 cp main.js manifest.json "<vault>/.obsidian/plugins/expert-sync/"
 ```
 
-Enable **Expert Sync (experimental)** under Settings → Community plugins. The Connect screen opens
-on its own (or run the command **Connect this vault to an Expert site**). **Find pages** lists the
-site's top-level pages to pick the root from. The same values live in the plugin settings:
+Turn on **NiCE Knowledge Sync (experimental)** under *Settings → Community plugins*, and the Connect screen opens.
+Pick a **vault folder** for the site. That keeps the rest of your vault private, and the plugin refuses to sync
+the whole vault unless you explicitly allow it.
+</details>
 
-| Setting | Example |
+## What gets published
+
+Before you sync, know what leaves your device:
+
+- **The page body:** your note converted to standard markdown. Wiki links become site links, embeds become
+  file links, and `==highlights==` become `<mark>`. `%%comments%%` are removed.
+- **A stored copy of the note:** kept in a page property so other devices get the note back exactly. It
+  includes your **frontmatter**. **Comments are removed** from it unless you turn on *Publish %%comments%%*.
+  Anyone who can read the page through the API can read this copy.
+- **Attachments** embedded in the note, or placed in its `_attachments/<note>/` folder.
+- **Only notes inside the vault folder you chose.** Syncing the whole vault needs a separate setting.
+
+Your token stays in Obsidian's secret storage, and sync bookkeeping stays in this device's local storage.
+Neither is written to the vault. The plugin talks only to your site.
+
+## How sync works
+
+| In Obsidian | On the site |
 |---|---|
-| Site URL | `https://your-site.example.com` |
-| API token | your JWT (stored in secret storage, never in the vault) |
-| Site root page | `Board_Games` (empty = whole site) |
-| Vault folder | `Board Games` (empty = whole vault) |
-| Sync every (minutes) | `0` (manual) |
+| The vault folder | The root page you chose |
+| `Note.md` | A page under its folder's page |
+| `Folder/` with `Folder.md` beside it | A parent page and its content |
+| `![[image.png]]` | A file attached to that page |
+| `[[Other note]]` | A link to that page |
+| `tags:` · `title:` · `summary:` · `article-type:` | Tags · title · overview · IDF article type |
 
-After that, sync with the ribbon icon or **Sync now**.
+**When the two sides disagree**
 
-## How it works
+| Situation | What happens |
+|---|---|
+| A page was edited on the site, or the plugin didn't write it | The note is updated from the site's markdown and flagged `nice-knowledge-sync: site-edited`. Your edits to it aren't sent until you run **Accept this note as the source** |
+| Both sides changed | Both are kept: `Note (knowledge conflict …).md` holds the site version, and your note is flagged `conflict` |
+| The page uses DekiScript | You get a read-only snapshot (`dynamic`), which is never sent back |
+| A note or a page was deleted | It's queued. **Review pending deletes** asks Keep or Delete, and a page that has child pages is never deleted |
+| A note was moved or renamed | The page moves with it |
 
-- **Pages ↔ notes.** The page `Root/A/B` is the note `<folder>/A/B.md`. Its child pages go in the
-  folder next to it, `<folder>/A/B/`. A new folder you create becomes a parent page on the next sync.
-- **Exact round-trip.** On push the plugin stores the whole note file in the page property
-  `obsidian#source` and publishes a CommonMark version as the page body. Wiki links become site
-  links, embeds become file links, `==highlights==` become `<mark>`, `%%comments%%` are dropped and
-  callouts become a bold-title quote. A small `obsidian#sync` property records the revision the
-  source was written at, so other devices get the note back byte for byte.
-- **Pages edited on the site.** If a page has changed since the plugin last wrote it, or was never
-  written by the plugin, the note is pulled from the server's markdown and flagged
-  `expert-sync: site-edited`. Your edits to a flagged note are not pushed until you run
-  **Accept this note as the source**, so the site author's work is never overwritten silently.
-- **Pages with DekiScript** (`dynamic: true` in the server's front matter) are pulled as read-only
-  snapshots (`expert-sync: dynamic`) and never pushed.
-- **Conflicts.** If both sides changed, the site version is saved as `Note (expert conflict …).md`
-  and your note is flagged `expert-sync: conflict` until you accept it. Pushes also send the last
-  known edit time with `abort=modified`, so the server refuses a stale write.
-- **Attachments.** Files embedded in a note, wherever they live in the vault, are uploaded to that
-  note's page. Pulled files go to `<dir>/_attachments/<note>/`. Files in that folder are uploaded
-  even if no note embeds them.
-- **Frontmatter.** `tags` ↔ page tags, `article-type` ↔ the `article:*` tag (IDF sites; new pages get
-  a type that fits their parent), `title` ↔ page title, `summary` → page overview.
-- **Deletes are never automatic.** A note deleted here or a page deleted on the site is queued.
-  **Review pending deletes** asks Keep or Delete for each item. A page that still has children on
-  the site is never deleted.
-- **Moves.** Renaming or moving a note moves the page (detected by identical content). Pages moved on
-  the site are renamed locally.
-- **Sync state** is per device, in Obsidian's local storage, not in the vault.
+> [!CAUTION]
+> **Accepting a site-edited note replaces the site version with yours.** The site's markdown export is a
+> little lossy, so formatting added in the site's editor (styled tables, layout HTML) can be lost. Check the
+> note first; the previous version stays in the page's revision history.
+
+Pushes include the edit time of the version they're based on. If the page changed on the site in the
+meantime, the server refuses the save and you get a conflict instead.
+
+<details>
+<summary>Under the hood</summary>
+
+- **Pull:** one `GET pages/{root}/tree` lists every page with its revision. Each changed page is read with
+  `format=markdown`, and the front matter the server adds (`revision`, `tags`, `dynamic`) decides whether
+  the stored copy still matches.
+- **Push:** `POST pages/{id}/contents` as `text/markdown` with `edittime` and `abort=modified`. Then the
+  stored copy goes into the `obsidian#source` property, and the revision it was written against into `obsidian#sync`.
+- **Attachments:** uploaded with `PUT pages/{id}/files/{name}`. They're listed again only when a page's revision changes.
+</details>
 
 ## Commands
 
-Connect this vault to an Expert site · Sync now · Test connection · Show last sync report · Review pending deletes ·
-Accept this note as the source · Reset sync state on this device
+| Command | What it does |
+|---|---|
+| Connect this vault to a NiCE Knowledge site | Opens the setup screen |
+| Sync now | Pulls, then pushes. Same as the ribbon's sync icon |
+| Accept this note as the source | Clears the `site-edited` / `conflict` flag so your version is sent |
+| Review pending deletes | Keep or delete each queued delete |
+| Show last sync report | What changed, what was blocked or skipped, and any errors |
+| Test connection | Checks the token, the markdown setting and the root page |
+| Reset sync state on this device | Starts the bookkeeping over. Nothing is deleted on either side |
+
+**Settings:** site URL, API token, site root page, vault folder, *Sync the whole vault* (off), *Publish %%comments%%* (off),
+and *Sync every N minutes* (0 means manual).
+
+## FAQ
+
+**Is my note exactly the same on another device?**
+Yes for notes you wrote in Obsidian, except that `%%comments%%` stay on the device that wrote them unless
+you publish them. Pages edited on the site arrive as the site's markdown export, which isn't byte-exact.
+
+**Will it overwrite what my team edits on the site?**
+Only if you choose to. Site-edited notes are held until you accept them, and the server rejects saves based on an
+older version. Even then, the replaced version stays in the page history.
+
+**Does it work on mobile?**
+It hasn't been tested there, so it's marked desktop-only.
+
+## Known limitations
+
+- Moving **and** editing a note in the same sync looks like a delete plus a new note.
+- Two attachments with the same file name on one page collide.
+- An attachment replaced on the site isn't noticed until that page's revision changes.
+- There's no paging for very large sites. Throttled requests (429/502/503/504) are retried with backoff.
+- The root page itself isn't synced, only its subpages.
+- The plugin id and its install folder are still `expert-sync`, from before the rename.
+
+## What the experiment showed
+
+Tested on 2026-10-16 against a NiCE Knowledge test site.
+
+**What worked**
+- With `text/markdown` writes and `format=markdown` reads, the site works as a backing store with no server
+  changes. The front matter the server adds (`revision`, `tags`, `dynamic`) is enough to drive sync.
+- `GET pages/{root}/tree?include=revision,properties` returns the whole subtree with revisions and small
+  properties inline.
+- Page properties held a 240 KB note exactly. Writing properties or tags doesn't change the page revision,
+  so the revision is a reliable sign that someone edited the page on the site.
+- `edittime` with `abort=modified` stops a save from overwriting a newer edit.
+
+**Rough edges**
+- The server's markdown export (HTML → markdown) is lossy, so the exact copy has to live in a property.
+- Files and page links come back as absolute URLs (`…/files/{id}/{name}?revision=N`). In uploaded file URLs, spaces become `_`.
+- `pages/{id}/info` doesn't include `date.modified`; the full `pages/{id}` response is needed to get the edit time.
+- A move leaves a redirect behind, so moving a page back needs `allow=deleteredirects`.
+- Deleting a page archives its child pages too, and they can only be restored by restoring the parent.
+- On IDF sites every page needs an article type that's allowed under its parent.
 
 ## Development
 
-Local settings for the CLI, the live tests and `create-vault` go in a `.env` file, which git ignores:
+Settings for the CLI, the live tests and `create-vault` go in a `.env` file, which git ignores:
 
 ```sh
-cp .env.example .env    # then set EXPERT_SITE, EXPERT_ROOT and EXPERT_TOKEN (or EXPERT_TOKEN_FILE)
-```
-
-```sh
-npm test                              # unit tests (transforms, paths, parsing, retries)
+cp .env.example .env          # EXPERT_SITE, EXPERT_ROOT, EXPERT_TOKEN or EXPERT_TOKEN_FILE
+npm install
+npm test                      # unit tests
 npm run typecheck
-node test-e2e/e2e.ts                  # live test against EXPERT_SITE, two simulated devices; cleans up its pages
-node src/node/cli.ts sync --vault ./some-folder
-node test-e2e/obsidian-eval.mjs <cdp-port> '<js>'   # drive an Obsidian started with --remote-debugging-port
+node test-e2e/e2e.ts          # live test: two simulated devices against EXPERT_SITE; removes its pages afterwards
+node src/node/cli.ts sync --vault ./some-folder --whole-vault
+npm run dev                   # rebuild on change
 ```
 
-Never commit tokens. `.env`, `*.token`, sync state files, `.obsidian/` and plugin `data.json` are all
-ignored. The plugin itself keeps the token in Obsidian's secret storage.
+| Path | Contents |
+|---|---|
+| `src/core/` | API client, markdown conversion and the sync engine, with no Obsidian dependency |
+| `src/obsidian/` | The plugin, its settings, the Connect screen and the vault adapter |
+| `src/node/` | Filesystem adapter and CLI used by the live tests |
+| `scripts/create-vault.mjs` | Creates a vault that's ready to connect |
+| `test/`, `test-e2e/` | Unit tests, the live end-to-end test and an Obsidian DevTools driver |
 
-`src/core` is platform-free and holds the API client, transforms and sync engine. `src/obsidian`
-holds the plugin and the vault adapter. `src/node` holds a filesystem adapter and CLI used by the
-live tests.
+Never commit tokens. `.env`, `*.token`, sync state files, `.obsidian/` and plugin `data.json` are all git-ignored.
 
-## Known limits
+## Contributing
 
-- Only file changes are detected. Moving a note *and* editing it in the same sync looks like a
-  delete plus a new note.
-- Attachment names must be unique per page; two embeds with the same file name from different
-  folders collide.
-- The server's markdown output is lossy (HTML → markdown). This only matters for pages edited on
-  the site, which come back flagged for review.
-- A page's folder note is the note next to the folder (`A.md` beside `A/`), not a note inside it.
-- Large trees: one `tree` call per sync, then one request per changed page. Throttled or
-  briefly unavailable responses (429/502/503/504) are retried with backoff; there is no paging.
-- The root page itself isn't synced; only its subpages are.
-
-## What the experiment showed (test site, 2026-10-16)
-
-Works well:
-- `text/markdown` writes and `format=markdown` reads make Expert a workable backing store with no
-  server changes. The server's front matter (`revision`, `tags`, `dynamic`) is enough to drive sync.
-- `GET pages/{root}/tree?include=revision,properties` returns the whole subtree with revisions and
-  small properties inline, so one request finds what changed.
-- Page properties hold the exact note (240 KB tested) and don't bump the page revision, and neither
-  do tag writes. Revision numbers are a reliable "edited on the site" signal.
-- `edittime` + `abort=modified` gives a server-side guard against overwriting a newer edit.
-
-Rough edges:
-- Server markdown is lossy (HTML → markdown normalises tables, lists and spacing), so the exact copy
-  has to live in a property.
-- Absolute URLs come back for files (`…/files/{id}/{name}?revision=N`) and page links, and uploaded
-  file names have spaces turned into `_` in their URLs.
-- `pages/{id}/info` has no `date.modified`; the full `pages/{id}` response is needed for `edittime`.
-- A move leaves a redirect behind, so moving back needs `allow=deleteredirects`.
-- Deleting a page archives its child pages with it, and archived children can only be restored by
-  restoring the parent.
-- On IDF sites every page needs an article type that fits its parent, so new pages and folder pages
-  get one picked from the parent's type.
+Issues and ideas are welcome. For anything big, open an issue first. Run `npm test` and `npm run typecheck` before
+sending a pull request.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+[MIT](LICENSE). Built as an experiment by an engineer on the NiCE Knowledge team; it isn't an officially supported NICE product.

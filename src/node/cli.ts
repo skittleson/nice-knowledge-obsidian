@@ -1,6 +1,6 @@
 // Command-line harness for the sync engine (testing without Obsidian).
 //
-//   node src/node/cli.ts sync    --vault ./vault [--site URL] [--root Board_Games] [--folder Sub] [--state ./state.json]
+//   node src/node/cli.ts sync    --vault ./vault [--site URL] [--root Board_Games] (--folder Sub | --whole-vault) [--state ./state.json]
 //   node src/node/cli.ts pending ...same options
 //   node src/node/cli.ts accept  ...same options --note "Board Games/Catan.md"
 //
@@ -40,6 +40,8 @@ export function engineFromArgs(): { engine: SyncEngine; vault: NodeVault } {
         siteUrl: site,
         rootPath: option("root", process.env.EXPERT_ROOT ?? ""),
         localFolder: option("folder", ""),
+        allowWholeVault: process.argv.includes("--whole-vault"),
+        keepComments: process.argv.includes("--keep-comments"),
     }, { info: (m) => console.log(m), warn: (m) => console.warn(`warn: ${m}`) });
     return { engine, vault };
 }
@@ -56,7 +58,7 @@ async function main(): Promise<void> {
     } else if(command === "accept") {
         console.log(await engine.acceptNote(option("note")));
     } else {
-        console.error("usage: cli.ts sync|pending|accept --vault DIR [--site URL] [--root PATH] [--folder F] [--state FILE] [--note PATH]");
+        console.error("usage: cli.ts sync|pending|accept --vault DIR [--site URL] [--root PATH] [--folder F | --whole-vault] [--keep-comments] [--state FILE] [--note PATH]");
         process.exitCode = 2;
     }
 }

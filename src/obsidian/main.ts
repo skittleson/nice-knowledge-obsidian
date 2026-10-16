@@ -11,6 +11,8 @@ interface ExpertSyncSettings {
     // id of the token in Obsidian's secret storage, never the token itself
     tokenSecret: string;
     autoSyncMinutes: number;
+    allowWholeVault: boolean;
+    keepComments: boolean;
 }
 
 const DEFAULT_SETTINGS: ExpertSyncSettings = {
@@ -19,6 +21,8 @@ const DEFAULT_SETTINGS: ExpertSyncSettings = {
     localFolder: "",
     tokenSecret: "",
     autoSyncMinutes: 0,
+    allowWholeVault: false,
+    keepComments: false,
 };
 
 const STATE_KEY = "expert-sync-state";
@@ -51,12 +55,12 @@ export default class ExpertSyncPlugin extends Plugin {
     async onload(): Promise<void> {
         this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
         this._status = this.addStatusBarItem();
-        this._setStatus("Expert: idle");
-        this.addRibbonIcon("refresh-cw", "Sync with Expert", () => this.sync());
+        this._setStatus("NiCE Knowledge: idle");
+        this.addRibbonIcon("refresh-cw", "Sync with NiCE Knowledge", () => this.sync());
         this.addSettingTab(new ExpertSyncSettingTab(this.app, this));
 
         this.addCommand({ id: "sync", name: "Sync now", callback: () => this.sync() });
-        this.addCommand({ id: "connect", name: "Connect this vault to an Expert site", callback: () => this.openSetup() });
+        this.addCommand({ id: "connect", name: "Connect this vault to a NiCE Knowledge site", callback: () => this.openSetup() });
         this.addCommand({ id: "test-connection", name: "Test connection", callback: () => this.testConnection() });
         this.addCommand({ id: "show-report", name: "Show last sync report", callback: () => new ReportModal(this.app, this.lastReport).open() });
         this.addCommand({ id: "review-pending", name: "Review pending deletes", callback: () => this.reviewPending() });
@@ -90,7 +94,7 @@ export default class ExpertSyncPlugin extends Plugin {
     }
 
     // stores the token in secret storage and saves the connection settings
-    async connect(siteUrl: string, token: string, rootPath: string, localFolder: string): Promise<void> {
+    async connect(siteUrl: string, token: string, rootPath: string, localFolder: string, allowWholeVault: boolean): Promise<void> {
         const secretId = this.settings.tokenSecret || DEFAULT_SECRET_ID;
         if(token) {
             this.app.secretStorage.setSecret(secretId, token.trim());
@@ -98,7 +102,7 @@ export default class ExpertSyncPlugin extends Plugin {
         if(this.settings.siteUrl !== siteUrl || this.settings.rootPath !== rootPath || this.settings.localFolder !== localFolder) {
             this.app.saveLocalStorage(STATE_KEY, null);
         }
-        Object.assign(this.settings, { siteUrl, rootPath, localFolder, tokenSecret: secretId });
+        Object.assign(this.settings, { siteUrl, rootPath, localFolder, tokenSecret: secretId, allowWholeVault: localFolder === "" && allowWholeVault });
         await this.saveSettings();
     }
 
@@ -136,7 +140,7 @@ export default class ExpertSyncPlugin extends Plugin {
     private _engine(): SyncEngine | null {
         const token = this._token();
         if(!this.settings.siteUrl || !token) {
-            new Notice("Expert Sync: set the site URL and API token in settings first.");
+            new Notice("NiCE Knowledge Sync: set the site URL and API token in settings first.");
             return null;
         }
         const client = new ExpertClient(this.settings.siteUrl, token, obsidianHttp);
@@ -144,13 +148,15 @@ export default class ExpertSyncPlugin extends Plugin {
             siteUrl: this.settings.siteUrl.replace(/\/+$/, ""),
             rootPath: this.settings.rootPath.trim().replace(/^\/+|\/+$/g, "").replace(/ /g, "_"),
             localFolder: this.settings.localFolder.trim(),
+            allowWholeVault: this.settings.allowWholeVault,
+            keepComments: this.settings.keepComments,
         }, { info: (m) => console.log(`[expert-sync] ${m}`), warn: (m) => console.warn(`[expert-sync] ${m}`) });
     }
 
     async sync(quiet = false): Promise<void> {
         if(this._syncing) {
             if(!quiet) {
-                new Notice("Expert Sync: a sync is already running.");
+                new Notice("NiCE Knowledge Sync: a sync is already running.");
             }
             return;
         }
@@ -159,22 +165,22 @@ export default class ExpertSyncPlugin extends Plugin {
             return;
         }
         this._syncing = true;
-        this._setStatus("Expert: syncing…");
+        this._setStatus("NiCE Knowledge: syncing…");
         try {
             const report = await engine.sync();
             this.lastReport = report;
             const summary = summarize(report);
             console.log("[expert-sync] report", report);
-            this._setStatus(`Expert: ${summary.toLowerCase()}`);
+            this._setStatus(`NiCE Knowledge: ${summary.toLowerCase()}`);
             const needsAttention = report.conflicts.length || report.errors.length || report.pending.length || report.blocked.length;
             if(!quiet || needsAttention) {
-                const notice = new Notice(`Expert Sync: ${summary}${needsAttention ? " (click for details)" : ""}`, needsAttention ? 10_000 : 4_000);
+                const notice = new Notice(`NiCE Knowledge Sync: ${summary}${needsAttention ? " (click for details)" : ""}`, needsAttention ? 10_000 : 4_000);
                 notice.messageEl.addEventListener("click", () => new ReportModal(this.app, report).open());
             }
         } catch(error) {
             const message = error instanceof Error ? error.message : String(error);
-            this._setStatus("Expert: sync failed");
-            new Notice(`Expert Sync failed: ${message}`, 10_000);
+            this._setStatus("NiCE Knowledge: sync failed");
+            new Notice(`NiCE Knowledge Sync failed: ${message}`, 10_000);
             console.error("[expert-sync]", error);
         } finally {
             this._syncing = false;
@@ -184,22 +190,22 @@ export default class ExpertSyncPlugin extends Plugin {
     async testConnection(): Promise<void> {
         const token = this._token();
         if(!this.settings.siteUrl || !token) {
-            new Notice("Expert Sync: set the site URL and API token first.");
+            new Notice("NiCE Knowledge Sync: set the site URL and API token first.");
             return;
         }
         try {
             const client = new ExpertClient(this.settings.siteUrl, token, obsidianHttp);
             const user = await client.currentUser();
             if(user.anonymous) {
-                new Notice("Expert Sync: the token signs in as an anonymous user. Check the token.", 8_000);
+                new Notice("NiCE Knowledge Sync: the token signs in as an anonymous user. Check the token.", 8_000);
                 return;
             }
             const markdown = await client.markdownEnabled();
             const tree = await client.tree(this.settings.rootPath.trim().replace(/ /g, "_"));
-            new Notice(`Expert Sync: signed in as ${user.name}. Markdown ${markdown ? "enabled" : "NOT enabled (turn on site/markdown-contents-enabled)"}. `
+            new Notice(`NiCE Knowledge Sync: signed in as ${user.name}. Markdown ${markdown ? "enabled" : "NOT enabled (turn on site/markdown-contents-enabled)"}. `
                 + `Root "${tree[0].title}" has ${tree.length - 1} pages.`, 10_000);
         } catch(error) {
-            new Notice(`Expert Sync: connection failed: ${error instanceof Error ? error.message : error}`, 10_000);
+            new Notice(`NiCE Knowledge Sync: connection failed: ${error instanceof Error ? error.message : error}`, 10_000);
         }
     }
 
@@ -209,9 +215,9 @@ export default class ExpertSyncPlugin extends Plugin {
             return;
         }
         try {
-            new Notice(`Expert Sync: ${await engine.acceptNote(path)}`);
+            new Notice(`NiCE Knowledge Sync: ${await engine.acceptNote(path)}`);
         } catch(error) {
-            new Notice(`Expert Sync: ${error instanceof Error ? error.message : error}`, 8_000);
+            new Notice(`NiCE Knowledge Sync: ${error instanceof Error ? error.message : error}`, 8_000);
         }
     }
 
@@ -227,7 +233,7 @@ export default class ExpertSyncPlugin extends Plugin {
             "The next sync treats every note as new and compares it with the site. Nothing is deleted on either side.",
             () => {
                 this.app.saveLocalStorage(STATE_KEY, null);
-                new Notice("Expert Sync: sync state cleared.");
+                new Notice("NiCE Knowledge Sync: sync state cleared.");
             }).open();
     }
 }
@@ -252,7 +258,7 @@ class ExpertSyncSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Site URL")
-            .setDesc("Your Expert site, for example https://your-site.example.com. The site needs the site/markdown-contents-enabled config key.")
+            .setDesc("Your NiCE Knowledge site, for example https://your-site.example.com. The site needs the site/markdown-contents-enabled config key.")
             .addText((text) => text.setPlaceholder("https://your-site.example.com").setValue(settings.siteUrl).onChange(async (value) => {
                 settings.siteUrl = value.trim();
                 await this._plugin.saveSettings();
@@ -283,6 +289,22 @@ class ExpertSyncSettingTab extends PluginSettingTab {
             }));
 
         new Setting(containerEl)
+            .setName("Sync the whole vault")
+            .setDesc("Only used when the vault folder is empty. Every note in this vault, including personal ones, is published to the site.")
+            .addToggle((toggle) => toggle.setValue(settings.allowWholeVault).onChange(async (value) => {
+                settings.allowWholeVault = value;
+                await this._plugin.saveSettings();
+            }));
+
+        new Setting(containerEl)
+            .setName("Publish %%comments%%")
+            .setDesc("Off: comments stay on this device and are removed from the copy stored on the site. On: they are kept in that copy, which anyone who can read the page through the API can see.")
+            .addToggle((toggle) => toggle.setValue(settings.keepComments).onChange(async (value) => {
+                settings.keepComments = value;
+                await this._plugin.saveSettings();
+            }));
+
+        new Setting(containerEl)
             .setName("Sync every (minutes)")
             .setDesc("0 turns automatic sync off.")
             .addText((text) => text.setValue(String(settings.autoSyncMinutes)).onChange(async (value) => {
@@ -306,7 +328,7 @@ class ReportModal extends Modal {
     }
 
     onOpen(): void {
-        this.setTitle("Expert Sync report");
+        this.setTitle("NiCE Knowledge Sync report");
         const report = this._report;
         if(!report) {
             this.contentEl.createEl("p", { text: "No sync has run yet in this session." });
@@ -385,7 +407,7 @@ class PendingModal extends Modal {
             this._items = this._items.filter((other) => other !== item);
             this._render();
         } catch(error) {
-            new Notice(`Expert Sync: ${error instanceof Error ? error.message : error}`, 8_000);
+            new Notice(`NiCE Knowledge Sync: ${error instanceof Error ? error.message : error}`, 8_000);
         }
     }
 
@@ -431,6 +453,7 @@ class SetupModal extends Modal {
     private _rootPath: string;
     private _localFolder: string;
     private _folderEdited = false;
+    private _allowWholeVault = false;
     private _status!: HTMLElement;
     private _rootDropdown: DropdownComponent | null = null;
 
@@ -444,7 +467,7 @@ class SetupModal extends Modal {
     }
 
     onOpen(): void {
-        this.setTitle("Connect this vault to an Expert site");
+        this.setTitle("Connect this vault to a NiCE Knowledge site");
         const { contentEl } = this;
         contentEl.createEl("p", { text: "Notes in this vault will be synced with pages on the site: pages as markdown, attachments as files. The site needs the site/markdown-contents-enabled config key." });
 
@@ -483,6 +506,13 @@ class SetupModal extends Modal {
                 });
                 this._folderInput = text.inputEl;
             });
+
+        new Setting(contentEl)
+            .setName("I really want to sync the whole vault")
+            .setDesc("Needed only when Vault folder is empty: every note in this vault, including personal ones, will be published to the site.")
+            .addToggle((toggle) => toggle.setValue(false).onChange((value) => {
+                this._allowWholeVault = value;
+            }));
 
         this._status = contentEl.createEl("p", { cls: "expert-sync-setup-status" });
         new Setting(contentEl)
@@ -555,6 +585,10 @@ class SetupModal extends Modal {
             return;
         }
         try {
+            if(this._localFolder === "" && !this._allowWholeVault) {
+                this._say("Vault folder is empty, which would publish every note in this vault. Enter a folder, or turn on \"I really want to sync the whole vault\".", true);
+                return;
+            }
             this._say("Checking the site…");
             const user = await client.currentUser();
             if(user.anonymous) {
@@ -567,7 +601,7 @@ class SetupModal extends Modal {
             }
             const tree = await client.tree(this._rootPath.replace(/ /g, "_"));
             this._say(`Signed in as ${user.name}. "${tree[0].title || "Home"}" has ${tree.length - 1} pages. Syncing…`);
-            await this._plugin.connect(this._siteUrl, this._token, this._rootPath.replace(/ /g, "_"), this._localFolder);
+            await this._plugin.connect(this._siteUrl, this._token, this._rootPath.replace(/ /g, "_"), this._localFolder, this._allowWholeVault);
             this._plugin.lastReport = null;
             await this._plugin.sync();
             const report = this._plugin.lastReport as SyncReport | null;

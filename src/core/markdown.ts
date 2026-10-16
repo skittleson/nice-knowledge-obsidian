@@ -1,6 +1,9 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-export const FLAG_KEY = "expert-sync";
+export const FLAG_KEY = "nice-knowledge-sync";
+
+// flag key written by versions before the NiCE Knowledge rename; still read and cleared
+const LEGACY_FLAG_KEYS = ["expert-sync"];
 export type NoteFlag = "site-edited" | "conflict" | "dynamic";
 
 export interface Frontmatter {
@@ -41,8 +44,14 @@ export function joinFrontmatter(data: Record<string, unknown>, body: string): st
 }
 
 export function readFlag(text: string): NoteFlag | null {
-    const value = splitFrontmatter(text).data[FLAG_KEY];
-    return value === "site-edited" || value === "conflict" || value === "dynamic" ? value : null;
+    const data = splitFrontmatter(text).data;
+    for(const key of [FLAG_KEY, ...LEGACY_FLAG_KEYS]) {
+        const value = data[key];
+        if(value === "site-edited" || value === "conflict" || value === "dynamic") {
+            return value;
+        }
+    }
+    return null;
 }
 
 // Sets or clears the flag line textually so the rest of the user's YAML keeps its formatting.
@@ -52,7 +61,7 @@ export function setFlag(text: string, flag: NoteFlag | null): string {
     if(!match) {
         return line ? `---\n${line}\n---\n${text}` : text;
     }
-    const lines = match[1].split(/\r?\n/).filter((l) => !new RegExp(`^${FLAG_KEY}\\s*:`).test(l));
+    const lines = match[1].split(/\r?\n/).filter((l) => ![FLAG_KEY, ...LEGACY_FLAG_KEYS].some((key) => new RegExp(`^${key}\\s*:`).test(l)));
     if(line) {
         lines.push(line);
     }
@@ -141,10 +150,13 @@ function convertCallouts(text: string): string {
     });
 }
 
+// Obsidian %%comments%% (which may span lines), outside code
+export function stripComments(body: string): string {
+    return outsideCode(body, (text) => text.replace(/%%[\s\S]*?%%/g, ""));
+}
+
 export function toPublishMarkdown(body: string, context: PublishContext): string {
-    // %%comments%% may span lines and must never reach the site
-    const withoutComments = outsideCode(body, (text) => text.replace(/%%[\s\S]*?%%/g, ""));
-    return outsideCode(withoutComments, (text) => {
+    return outsideCode(stripComments(body), (text) => {
         let result = convertCallouts(text);
 
         result = result.replace(/!\[\[([^\]\n]+)\]\]/g, (all, raw: string) => {

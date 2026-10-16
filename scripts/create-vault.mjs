@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Creates a new Obsidian vault wired to an Expert site, with the plugin installed and enabled.
+// Creates a new Obsidian vault wired to a NiCE Knowledge site, with the plugin installed and enabled.
 //
 //   node scripts/create-vault.mjs --vault ~/Vaults/BoardGames --site https://your-site.example.com --root Board_Games [--folder "Board Games"] [--open]
 //

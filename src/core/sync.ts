@@ -4,7 +4,7 @@ import {
 } from "./expertApi.ts";
 import type { FileStat, Logger, StateStore, VaultIO } from "./io.ts";
 import {
-    collectFileLinks, FLAG_KEY, joinFrontmatter, readFlag, setFlag, splitFrontmatter, toLocalMarkdown, toPublishMarkdown,
+    collectFileLinks, FLAG_KEY, joinFrontmatter, readFlag, setFlag, splitFrontmatter, stripComments, toLocalMarkdown, toPublishMarkdown,
 } from "./markdown.ts";
 import {
     attachmentDir, basename, conflictPath, dirname, isIgnoredNote, isInside, joinPath, mimeTypeFor, relativeTo,
@@ -19,6 +19,12 @@ export interface SyncSettings {
 
     // vault folder that mirrors the root page, "" for the whole vault
     localFolder: string;
+
+    // "" as localFolder publishes every note in the vault, so it needs an explicit opt-in
+    allowWholeVault?: boolean;
+
+    // store %%comments%% in the page's source property (readable by anyone who can read the page)
+    keepComments?: boolean;
 }
 
 export interface FileState {
@@ -137,6 +143,9 @@ export class SyncEngine {
         this._report = emptyReport();
         await this._loadState();
         try {
+            if(this._settings.localFolder === "" && !this._settings.allowWholeVault) {
+                throw new Error("No vault folder is set, which would publish every note in this vault. Choose a vault folder, or turn on \"Sync the whole vault\".");
+            }
             if(!(await this._client.markdownEnabled())) {
                 throw new Error("Markdown is not enabled on this site. Turn on the site/markdown-contents-enabled config key.");
             }
@@ -323,7 +332,7 @@ export class SyncEngine {
             // a note already sits there: adopt it when it is the same text (another device synced it)
             if(page.syncMeta && page.syncMeta.revision === page.revision) {
                 const text = await this._vault.readText(notePath);
-                if(await sha256(text) === page.syncMeta.hash) {
+                if(await sha256(this._storedSource(text)) === page.syncMeta.hash) {
                     const state = await this._newPageState(page, notePath, text, {});
                     await this._pullFiles(page, state, page.syncMeta);
                     this._report.pulled.push(notePath);
@@ -567,8 +576,41 @@ export class SyncEngine {
             this._report.blocked.push(`${state.notePath} (${FLAG_KEY}: ${flag}; run "Accept note as source" after reviewing)`);
             return;
         }
-        await this._push(state, text, toEditTime(state.modified));
+        const editTime = await this._editTimeFor(state);
+        if(!editTime) {
+            this._report.skipped.push({ path: state.notePath, reason: "the site page changed during this sync; sync again" });
+            return;
+        }
+        await this._push(state, text, editTime);
+        if(this._report.conflicts.some((c) => c.startsWith(state.notePath))) {
+            return;
+        }
         this._report.pushed.push(state.notePath);
+    }
+
+    // The edit time of the revision this note was based on, so the server can refuse
+    // a stale save. Never falls back to "now", which would skip that check.
+    private async _editTimeFor(state: PageState): Promise<string | null> {
+        const known = toEditTime(state.modified);
+        if(known !== "now") {
+            return known;
+        }
+        const info = await this._client.pageInfo(state.id);
+        if(info.revision !== state.revision) {
+            return null;
+        }
+        state.modified = info.modified;
+        const fetched = toEditTime(info.modified);
+        return fetched === "now" ? null : fetched;
+    }
+
+    // what gets stored on the site as the note's exact copy
+    private _storedSource(text: string): string {
+        if(this._settings.keepComments) {
+            return text;
+        }
+        const { body } = splitFrontmatter(text);
+        return text.slice(0, text.length - body.length) + stripComments(body);
     }
 
     private async _pushFilesOnly(state: PageState): Promise<void> {
@@ -579,7 +621,7 @@ export class SyncEngine {
         const before = this._report.uploaded.length;
         await this._uploadNoteFiles(state, text);
         if(this._report.uploaded.length > before) {
-            await this._writeSyncMeta(state, text);
+            await this._writeSyncMeta(state, text, this._storedSource(text));
         }
     }
 
@@ -615,13 +657,16 @@ export class SyncEngine {
         if(typeof data.summary === "string") {
             await this._client.putProperty(state.id, OVERVIEW_PROPERTY, data.summary);
         }
-        await this._client.putProperty(state.id, SOURCE_PROPERTY, text);
-        await this._writeSyncMeta(state, text);
+        const stored = this._storedSource(text);
+        await this._client.putProperty(state.id, SOURCE_PROPERTY, stored);
+        await this._writeSyncMeta(state, text, stored);
     }
 
-    private async _writeSyncMeta(state: PageState, text: string): Promise<void> {
+    // `stored` is what the site holds (its hash goes in the sync property);
+    // `text` is the local file (its hash tells the next sync whether it changed)
+    private async _writeSyncMeta(state: PageState, text: string, stored: string): Promise<void> {
         const info = await this._client.pageInfo(state.id);
-        const hash = await sha256(text);
+        const hash = await sha256(stored);
         const files: Record<string, string> = {};
         for(const [name, file] of Object.entries(state.files)) {
             files[name] = relativeTo(file.localPath, this._settings.localFolder);
@@ -632,7 +677,7 @@ export class SyncEngine {
         Object.assign(state, {
             revision: info.revision,
             modified: info.modified,
-            localHash: hash,
+            localHash: await sha256(text),
             mtime: stat?.mtime ?? 0,
             size: stat?.size ?? 0,
         });
@@ -796,7 +841,7 @@ export class SyncEngine {
         const info = await this._client.pageInfo(state.id);
         state.revision = info.revision;
         state.modified = info.modified;
-        await this._writeSyncMeta(state, text);
+        await this._writeSyncMeta(state, text, this._storedSource(text));
     }
 
     // --- misc ---

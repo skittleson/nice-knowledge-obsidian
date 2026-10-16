@@ -5,7 +5,10 @@
 // note go in  <dir>/_attachments/<note-name>/ .
 
 export const ATTACHMENTS_DIR = "_attachments";
-export const CONFLICT_MARKER = " (expert conflict ";
+export const CONFLICT_MARKER = " (knowledge conflict ";
+
+// conflict copies named by versions before the NiCE Knowledge rename
+const LEGACY_CONFLICT_MARKERS = [" (expert conflict "];
 
 export function joinPath(...parts: string[]): string {
     return parts.filter((part) => part !== "").join("/").replace(/\/+/g, "/");
@@ -54,7 +57,8 @@ export function relativeTo(path: string, folder: string): string {
 
 // true for files the engine must never treat as notes
 export function isIgnoredNote(path: string): boolean {
-    return path.split("/").includes(ATTACHMENTS_DIR) || basename(path).includes(CONFLICT_MARKER);
+    const name = basename(path);
+    return path.split("/").includes(ATTACHMENTS_DIR) || [CONFLICT_MARKER, ...LEGACY_CONFLICT_MARKERS].some((marker) => name.includes(marker));
 }
 
 export function attachmentDir(notePath: string): string {

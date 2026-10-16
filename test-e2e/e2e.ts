@@ -1,4 +1,4 @@
-// Live end-to-end test against a real Expert site, using two folders as two "devices".
+// Live end-to-end test against a real NiCE Knowledge site, using two folders as two "devices".
 //
 //   node test-e2e/e2e.ts [SITE_URL] [ROOT_PAGE]
 //
@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ExpertClient, SOURCE_PROPERTY } from "../src/core/expertApi.ts";
-import { readFlag } from "../src/core/markdown.ts";
+import { readFlag, stripComments } from "../src/core/markdown.ts";
 import { type SyncReport, type SyncState, SyncEngine } from "../src/core/sync.ts";
 import { expertToken, loadDotEnv } from "../src/node/env.ts";
 import { JsonFileStore, NodeVault, nodeHttp } from "../src/node/nodeVault.ts";
@@ -32,7 +32,7 @@ function device(name: string) {
     const dir = join(base, name);
     const vault = new NodeVault(dir);
     const engine = new SyncEngine(client, vault, new JsonFileStore<SyncState>(join(base, `${name}.state.json`)),
-        { siteUrl: site, rootPath: root, localFolder: "" }, { info: () => {}, warn: (m) => console.warn(`  warn[${name}]: ${m}`) });
+        { siteUrl: site, rootPath: root, localFolder: "", allowWholeVault: true }, { info: () => {}, warn: (m) => console.warn(`  warn[${name}]: ${m}`) });
     const file = (path: string) => join(dir, ...path.split("/"));
     return {
         dir, vault, engine,
@@ -60,10 +60,15 @@ try {
     const a = device("A");
     const b = device("B");
 
-    // start from "edited in the Expert editor" for the pages the test drives
+    // start from "edited in the NiCE Knowledge editor" for the pages the test drives
     for(const page of (await client.tree(root)).filter((p) => p.title === "Catan" || p.title === "Codenames")) {
         await client.postMarkdown(page.id, (await client.getMarkdown(page.id)).body.replace(/\n## Obsidian bits[\s\S]*$/, "\n") + `\n## Obsidian bits reset ${run}\n`, {});
     }
+
+    const guarded = new SyncEngine(client, a.vault, new JsonFileStore<SyncState>(join(base, "guard.state.json")),
+        { siteUrl: site, rootPath: root, localFolder: "" }, { info: () => {}, warn: () => {} });
+    await assert.rejects(guarded.sync(), /publish every note/);
+    check("syncing the whole vault is refused unless explicitly allowed");
 
     let report = await a.sync("initial pull");
     assert.ok(report.pulled.includes("Catan.md"));
@@ -96,8 +101,11 @@ try {
     assert.ok(!published.body.includes("hidden comment"));
     assert.ok(!published.body.includes("[!tip]"));
     assert.match(published.body, /<mark>highlighted<\/mark>/);
-    assert.equal(await client.getProperty(catan.id, SOURCE_PROPERTY), catanBody);
-    check("accepted note pushes: wiki links, embeds, highlights, comments, callouts converted; exact source stored");
+    const stored = await client.getProperty(catan.id, SOURCE_PROPERTY);
+    assert.equal(stored, stripComments(catanBody));
+    assert.ok(!stored!.includes("hidden comment"), "comments must not reach the stored copy");
+    assert.ok(stored!.includes("[[not a link]] ==not a highlight=="), "code blocks are untouched");
+    check("accepted note pushes: links, embeds, highlights, callouts converted; stored copy is exact minus %%comments%%");
 
     const catanState = Object.values((await new JsonFileStore<SyncState>(join(base, "A.state.json")).load())!.pages).find((p) => p.notePath === "Catan.md")!;
     assert.ok(catanState.modified, "modified timestamp recorded for concurrent-edit check");
@@ -110,10 +118,11 @@ try {
 
     // second device gets byte-exact note and the attachment at the same path
     report = await b.sync("device B initial");
-    assert.equal(await b.read("Catan.md"), catanBody);
+    assert.equal(await b.read("Catan.md"), stripComments(catanBody));
+    assert.ok((await a.read("Catan.md")).includes("%%hidden comment%%"), "comments stay on the device that wrote them");
     assert.deepEqual(await readFile(join(b.dir, "_attachments", "Catan", `board-${run}.png`)), PNG);
     assert.equal(readFlag(await b.read("Catan.md")), null);
-    check("second device pulls the pushed note byte-exact and its attachment");
+    check("second device pulls the pushed note (minus comments) and its attachment");
 
     // new note in a new folder on device B
     const folder = `Party ${run}`;
@@ -133,7 +142,7 @@ try {
     assert.equal(await a.read(wavelength), await b.read(wavelength));
     check("other device pulls the created note byte-exact into the same folder");
 
-    // site edit (as if in the Expert editor) on a source-backed page, local unchanged -> pulled as site-edited
+    // site edit (as if in the NiCE Knowledge editor) on a source-backed page, local unchanged -> pulled as site-edited
     await client.postMarkdown(wavePage.id, "Edited **on the site**.\n", {});
     report = await a.sync("site edit");
     assert.ok(report.pulled.includes(wavelength));

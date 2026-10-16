@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseServerMarkdown, parseSyncMeta, pageRef, toEditTime } from "../src/core/expertApi.ts";
-import { collectFileLinks, readFlag, setFlag, splitFrontmatter, toLocalMarkdown, toPublishMarkdown } from "../src/core/markdown.ts";
+import { collectFileLinks, readFlag, setFlag, splitFrontmatter, stripComments, toLocalMarkdown, toPublishMarkdown } from "../src/core/markdown.ts";
 import { attachmentDir, conflictPath, isIgnoredNote, noteForAttachment, titleToFileName, titleToSegment, uniquePath } from "../src/core/paths.ts";
 
 const publish = (body: string) => toPublishMarkdown(body, {
@@ -68,11 +68,22 @@ describe("frontmatter and flags", () => {
     it("sets and clears the flag without reformatting other YAML", () => {
         const text = "---\ntitle:   'Odd  spacing'\n---\nbody";
         const flagged = setFlag(text, "site-edited");
-        expect(flagged).toBe("---\ntitle:   'Odd  spacing'\nexpert-sync: site-edited\n---\nbody");
+        expect(flagged).toBe("---\ntitle:   'Odd  spacing'\nnice-knowledge-sync: site-edited\n---\nbody");
         expect(readFlag(flagged)).toBe("site-edited");
         expect(setFlag(flagged, null)).toBe(text);
-        expect(setFlag("plain", "conflict")).toBe("---\nexpert-sync: conflict\n---\nplain");
+        expect(setFlag("plain", "conflict")).toBe("---\nnice-knowledge-sync: conflict\n---\nplain");
         expect(setFlag(setFlag("plain", "conflict"), null)).toBe("plain");
+    });
+
+    it("still reads and clears the flag key from before the rename", () => {
+        const legacy = "---\ntitle: A\nexpert-sync: conflict\n---\nbody";
+        expect(readFlag(legacy)).toBe("conflict");
+        expect(setFlag(legacy, null)).toBe("---\ntitle: A\n---\nbody");
+        expect(setFlag(legacy, "site-edited")).toBe("---\ntitle: A\nnice-knowledge-sync: site-edited\n---\nbody");
+    });
+
+    it("strips comments everywhere except code", () => {
+        expect(stripComments("a %%x%% b\n%%\nmulti\n%%\n`%%keep%%`\n```\n%%keep%%\n```")).toBe("a  b\n\n`%%keep%%`\n```\n%%keep%%\n```");
     });
 
     it("collects embedded file links outside code", () => {
@@ -116,7 +127,8 @@ describe("paths", () => {
         expect(noteForAttachment("Games/_attachments/Catan/x.png")).toBe("Games/Catan.md");
         expect(isIgnoredNote("Games/_attachments/Catan/notes.md")).toBe(true);
         expect(isIgnoredNote(conflictPath("Catan.md", new Date("2026-10-16T15:00:00Z")))).toBe(true);
-        expect(conflictPath("Catan.md", new Date("2026-10-16T15:04:00Z"))).toBe("Catan (expert conflict 2026-10-16 15-04).md");
+        expect(conflictPath("Catan.md", new Date("2026-10-16T15:04:00Z"))).toBe("Catan (knowledge conflict 2026-10-16 15-04).md");
+        expect(isIgnoredNote("Catan (expert conflict 2026-10-16 15-04).md")).toBe(true);
         expect(uniquePath("a.md", (p) => p === "a.md", "7")).toBe("a (7).md");
     });
 });

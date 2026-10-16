@@ -2,7 +2,7 @@
   "name": "nice-knowledge-obsidian",
   "version": "0.1.0",
   "private": true,
-  "description": "Experimental: use a CXone Expert site as the backing store for an Obsidian vault.",
+  "description": "Experimental: use a NiCE Knowledge site as the backing store for an Obsidian vault.",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && node esbuild.config.mjs production",
