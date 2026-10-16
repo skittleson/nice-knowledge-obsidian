@@ -1,0 +1,31 @@
+{
+  "name": "nice-knowledge-obsidian",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Experimental: use a CXone Expert site as the backing store for an Obsidian vault.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "cli": "node src/node/cli.ts",
+    "e2e": "node test-e2e/e2e.ts"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.14.4",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "author": "Spencer Kittleson",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/skittleson/nice-knowledge-obsidian.git"
+  }
+}

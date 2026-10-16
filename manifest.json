@@ -1,0 +1,9 @@
+{
+  "id": "expert-sync",
+  "name": "Expert Sync (experimental)",
+  "version": "0.1.0",
+  "minAppVersion": "1.11.4",
+  "description": "Use a CXone Expert site as the backing store for your notes and attachments.",
+  "author": "Spencer Kittleson",
+  "isDesktopOnly": true
+}

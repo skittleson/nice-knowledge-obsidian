@@ -1,0 +1,28 @@
+# dependencies and build output
+node_modules/
+main.js
+*.tsbuildinfo
+coverage/
+
+# local configuration and secrets: never commit
+.env
+.env.*
+!.env.example
+*.token
+*.pem
+*.key
+
+# test runs, sync state and Obsidian vault data
+.e2e/
+.expert-sync-state.json
+*.state.json
+.obsidian/
+data.json
+
+# logs and OS/editor clutter
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
