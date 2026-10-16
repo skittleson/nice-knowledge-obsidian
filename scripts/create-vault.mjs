@@ -46,7 +46,7 @@ if(!existsSync(join(repo, "main.js"))) {
     execFileSync("npm", ["run", "build"], { cwd: repo, stdio: "inherit" });
 }
 
-const pluginDir = join(vault, ".obsidian", "plugins", "expert-sync");
+const pluginDir = join(vault, ".obsidian", "plugins", "nice-knowledge-sync");
 mkdirSync(pluginDir, { recursive: true });
 copyFileSync(join(repo, "main.js"), join(pluginDir, "main.js"));
 copyFileSync(join(repo, "manifest.json"), join(pluginDir, "manifest.json"));
@@ -57,7 +57,7 @@ writeFileSync(join(pluginDir, "data.json"), JSON.stringify({
     tokenSecret: "",
     autoSyncMinutes: 0,
 }, null, 2));
-writeFileSync(join(vault, ".obsidian", "community-plugins.json"), JSON.stringify(["expert-sync"]));
+writeFileSync(join(vault, ".obsidian", "community-plugins.json"), JSON.stringify(["nice-knowledge-sync"]));
 writeFileSync(join(vault, ".obsidian", "app.json"), JSON.stringify({ attachmentFolderPath: "./_attachments" }, null, 2));
 
 const manifest = JSON.parse(readFileSync(join(repo, "manifest.json"), "utf8"));

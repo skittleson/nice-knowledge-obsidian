@@ -25,8 +25,12 @@ const DEFAULT_SETTINGS: ExpertSyncSettings = {
     keepComments: false,
 };
 
-const STATE_KEY = "expert-sync-state";
-const DEFAULT_SECRET_ID = "expert-sync-token";
+const STATE_KEY = "nice-knowledge-sync-state";
+const DEFAULT_SECRET_ID = "nice-knowledge-sync-token";
+
+// keys used while the plugin id was expert-sync
+const LEGACY_STATE_KEY = "expert-sync-state";
+const LOG_PREFIX = "[nice-knowledge-sync]";
 
 function summarize(report: SyncReport): string {
     const parts: string[] = [];
@@ -54,6 +58,7 @@ export default class ExpertSyncPlugin extends Plugin {
 
     async onload(): Promise<void> {
         this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+        this._migrateState();
         this._status = this.addStatusBarItem();
         this._setStatus("NiCE Knowledge: idle");
         this.addRibbonIcon("refresh-cw", "Sync with NiCE Knowledge", () => this.sync());
@@ -82,6 +87,17 @@ export default class ExpertSyncPlugin extends Plugin {
         this.restartAutoSync();
         if(!this.isConfigured()) {
             this.app.workspace.onLayoutReady(() => this.openSetup());
+        }
+    }
+
+    // sync state saved under the old plugin id moves to the new key once
+    private _migrateState(): void {
+        const legacy = this.app.loadLocalStorage(LEGACY_STATE_KEY);
+        if(legacy && !this.app.loadLocalStorage(STATE_KEY)) {
+            this.app.saveLocalStorage(STATE_KEY, legacy);
+        }
+        if(legacy) {
+            this.app.saveLocalStorage(LEGACY_STATE_KEY, null);
         }
     }
 
@@ -150,7 +166,7 @@ export default class ExpertSyncPlugin extends Plugin {
             localFolder: this.settings.localFolder.trim(),
             allowWholeVault: this.settings.allowWholeVault,
             keepComments: this.settings.keepComments,
-        }, { info: (m) => console.log(`[expert-sync] ${m}`), warn: (m) => console.warn(`[expert-sync] ${m}`) });
+        }, { info: (m) => console.log(`${LOG_PREFIX} ${m}`), warn: (m) => console.warn(`${LOG_PREFIX} ${m}`) });
     }
 
     async sync(quiet = false): Promise<void> {
@@ -170,7 +186,7 @@ export default class ExpertSyncPlugin extends Plugin {
             const report = await engine.sync();
             this.lastReport = report;
             const summary = summarize(report);
-            console.log("[expert-sync] report", report);
+            console.log(`${LOG_PREFIX} report`, report);
             this._setStatus(`NiCE Knowledge: ${summary.toLowerCase()}`);
             const needsAttention = report.conflicts.length || report.errors.length || report.pending.length || report.blocked.length;
             if(!quiet || needsAttention) {
@@ -181,7 +197,7 @@ export default class ExpertSyncPlugin extends Plugin {
             const message = error instanceof Error ? error.message : String(error);
             this._setStatus("NiCE Knowledge: sync failed");
             new Notice(`NiCE Knowledge Sync failed: ${message}`, 10_000);
-            console.error("[expert-sync]", error);
+            console.error(LOG_PREFIX, error);
         } finally {
             this._syncing = false;
         }
@@ -514,7 +530,7 @@ class SetupModal extends Modal {
                 this._allowWholeVault = value;
             }));
 
-        this._status = contentEl.createEl("p", { cls: "expert-sync-setup-status" });
+        this._status = contentEl.createEl("p", { cls: "nice-knowledge-sync-setup-status" });
         new Setting(contentEl)
             .addButton((button) => button.setButtonText("Cancel").onClick(() => this.close()))
             .addButton((button) => button.setButtonText("Connect and sync").setCta().onClick(async () => {

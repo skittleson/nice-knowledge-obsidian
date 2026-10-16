@@ -42,8 +42,8 @@ After that, use the ribbon's sync icon or the **Sync now** command whenever you 
 
 ```sh
 npm run build
-mkdir -p "<vault>/.obsidian/plugins/expert-sync"
-cp main.js manifest.json "<vault>/.obsidian/plugins/expert-sync/"
+mkdir -p "<vault>/.obsidian/plugins/nice-knowledge-sync"
+cp main.js manifest.json "<vault>/.obsidian/plugins/nice-knowledge-sync/"
 ```
 
 Turn on **NiCE Knowledge Sync (experimental)** under *Settings → Community plugins*, and the Connect screen opens.
@@ -141,7 +141,6 @@ It hasn't been tested there, so it's marked desktop-only.
 - An attachment replaced on the site isn't noticed until that page's revision changes.
 - There's no paging for very large sites. Throttled requests (429/502/503/504) are retried with backoff.
 - The root page itself isn't synced, only its subpages.
-- The plugin id and its install folder are still `expert-sync`, from before the rename.
 
 ## What the experiment showed
 

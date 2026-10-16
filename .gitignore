@@ -14,6 +14,7 @@ coverage/
 
 # test runs, sync state and Obsidian vault data
 .e2e/
+.nice-knowledge-sync-state.json
 .expert-sync-state.json
 *.state.json
 .obsidian/

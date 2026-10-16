@@ -35,7 +35,7 @@ export function engineFromArgs(): { engine: SyncEngine; vault: NodeVault } {
     const vaultDir = option("vault");
     const vault = new NodeVault(vaultDir);
     const client = new ExpertClient(site, token, nodeHttp);
-    const store = new JsonFileStore<SyncState>(option("state", join(vaultDir, ".expert-sync-state.json")));
+    const store = new JsonFileStore<SyncState>(option("state", join(vaultDir, ".nice-knowledge-sync-state.json")));
     const engine = new SyncEngine(client, vault, store, {
         siteUrl: site,
         rootPath: option("root", process.env.EXPERT_ROOT ?? ""),
